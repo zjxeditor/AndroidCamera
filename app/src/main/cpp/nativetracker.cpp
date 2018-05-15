@@ -124,8 +124,7 @@ static struct TrackerResultFieldIDs {
 TrackerResultFieldIDs g_TrackerResultFieldIDs;
 
 extern "C"
-JNIEXPORT void JNICALL Java_com_zjxdev_tracker_CSRT_00024TrackerParams_InitJniFieldIDs(JNIEnv *env, jobject thiz) {
-    jclass thizclass = env->GetObjectClass(thiz);
+JNIEXPORT void JNICALL Java_com_zjxdev_tracker_CSRT_00024TrackerParams_InitJniFieldIDs(JNIEnv *env, jclass thizclass) {
     g_TrackerParamsFieldIDs.UseHOG_ID = env->GetFieldID(thizclass, "UseHOG", "Z");
     g_TrackerParamsFieldIDs.UseCN_ID = env->GetFieldID(thizclass, "UseCN", "Z");
     g_TrackerParamsFieldIDs.UseGRAY_ID = env->GetFieldID(thizclass, "UseGRAY", "Z");
@@ -172,8 +171,7 @@ JNIEXPORT void JNICALL Java_com_zjxdev_tracker_CSRT_00024TrackerParams_InitJniFi
 
 extern "C"
 JNIEXPORT void JNICALL Java_com_zjxdev_tracker_CSRT_00024Bounds_InitJniFieldIDs
-        (JNIEnv *env, jobject thiz) {
-    jclass thizclass = env->GetObjectClass(thiz);
+        (JNIEnv *env, jclass thizclass) {
     g_BoundsFieldIDs.x0_ID = env->GetFieldID(thizclass, "x0", "I");
     g_BoundsFieldIDs.y0_ID = env->GetFieldID(thizclass, "y0", "I");
     g_BoundsFieldIDs.x1_ID = env->GetFieldID(thizclass, "x1", "I");
@@ -182,8 +180,7 @@ JNIEXPORT void JNICALL Java_com_zjxdev_tracker_CSRT_00024Bounds_InitJniFieldIDs
 
 extern "C"
 JNIEXPORT void JNICALL Java_com_zjxdev_tracker_CSRT_00024TrackerResult_InitJniFieldIDs
-        (JNIEnv *env, jobject thiz) {
-    jclass thizclass = env->GetObjectClass(thiz);
+        (JNIEnv *env, jclass thizclass) {
     g_TrackerResultFieldIDs.Succeed_ID = env->GetFieldID(thizclass, "Succeed", "Z");
     g_TrackerResultFieldIDs.Score_ID = env->GetFieldID(thizclass, "Score", "F");
     g_TrackerResultFieldIDs.Box_ID = env->GetFieldID(thizclass, "Box",
@@ -192,7 +189,7 @@ JNIEXPORT void JNICALL Java_com_zjxdev_tracker_CSRT_00024TrackerResult_InitJniFi
 
 extern "C"
 JNIEXPORT void JNICALL Java_com_zjxdev_tracker_CSRT_StartSystem
-        (JNIEnv *env, jobject thiz, jstring logPath) {
+        (JNIEnv *env, jclass thizclass, jstring logPath) {
     const char *path = env->GetStringUTFChars(logPath, NULL);
     CSRT::StartSystem(path);
     env->ReleaseStringUTFChars(logPath, path);
@@ -200,13 +197,13 @@ JNIEXPORT void JNICALL Java_com_zjxdev_tracker_CSRT_StartSystem
 
 extern "C"
 JNIEXPORT void JNICALL Java_com_zjxdev_tracker_CSRT_CloseSystem
-        (JNIEnv *env, jobject thiz) {
+        (JNIEnv *env, jclass thizclass) {
     CSRT::CloseSystem();
 }
 
 extern "C"
 JNIEXPORT jlong JNICALL Java_com_zjxdev_tracker_CSRT_CreateTracker
-        (JNIEnv *env, jobject thiz, jint rows, jint cols, jobject params) {
+        (JNIEnv *env, jclass thizclass, jint rows, jint cols, jobject params) {
     CSRT::CSRTrackerParams nativeParams;
     g_TrackerParamsFieldIDs.Convert(env, params, nativeParams);
     CSRT::CSRTracker *pTracker = new CSRT::CSRTracker(rows, cols, nativeParams);
@@ -215,7 +212,7 @@ JNIEXPORT jlong JNICALL Java_com_zjxdev_tracker_CSRT_CreateTracker
 
 extern "C"
 JNIEXPORT void JNICALL Java_com_zjxdev_tracker_CSRT_DeleteTracker
-        (JNIEnv *env, jobject thiz, jlong trackerPtr) {
+        (JNIEnv *env, jclass thizclass, jlong trackerPtr) {
     CSRT::CSRTracker *pTracker = (CSRT::CSRTracker *) trackerPtr;
     if (pTracker != nullptr)
         delete pTracker;
@@ -223,7 +220,7 @@ JNIEXPORT void JNICALL Java_com_zjxdev_tracker_CSRT_DeleteTracker
 
 extern "C"
 JNIEXPORT void JNICALL Java_com_zjxdev_tracker_CSRT_InitializeTracker
-        (JNIEnv *env, jobject thiz, jlong dataPtr, jobject bb, jlong trackerPtr) {
+        (JNIEnv *env, jclass thizclass, jlong dataPtr, jobject bb, jlong trackerPtr) {
     unsigned char *pData = (unsigned char *) dataPtr;
     CSRT::CSRTracker *pTracker = (CSRT::CSRTracker *) trackerPtr;
     CSRT::Bounds nativebb;
@@ -233,7 +230,7 @@ JNIEXPORT void JNICALL Java_com_zjxdev_tracker_CSRT_InitializeTracker
 
 extern "C"
 JNIEXPORT void JNICALL Java_com_zjxdev_tracker_CSRT_UpdateTracker
-        (JNIEnv *env, jobject thiz, jlong dataPtr, jobject res, jlong trackerPtr) {
+        (JNIEnv *env, jclass thizclass, jlong dataPtr, jobject res, jlong trackerPtr) {
     unsigned char *pData = (unsigned char *) dataPtr;
     CSRT::CSRTracker *pTracker = (CSRT::CSRTracker *) trackerPtr;
     CSRT::Bounds nativebb;
@@ -244,7 +241,7 @@ JNIEXPORT void JNICALL Java_com_zjxdev_tracker_CSRT_UpdateTracker
 
 extern "C"
 JNIEXPORT void JNICALL Java_com_zjxdev_tracker_CSRT_ReinitialzieTracker
-        (JNIEnv *env, jobject thiz, jlong trackerPtr) {
+        (JNIEnv *env, jclass thizclass, jlong trackerPtr) {
     CSRT::CSRTracker *pTracker = (CSRT::CSRTracker *) trackerPtr;
     pTracker->SetReinitialize();
 }

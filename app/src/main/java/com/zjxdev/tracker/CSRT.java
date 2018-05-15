@@ -2,184 +2,235 @@ package com.zjxdev.tracker;
 
 import android.util.Log;
 
+/**
+ * The Java interface for CSRT tracker. Only 1 tracker can be created. Not support for multi object tracking.
+ */
 public class CSRT {
-    private static boolean libLoadFlag = false;
+    private static final String TAG = CSRT.class.getSimpleName();
+    private static boolean libLoadFlag = false;     // Flag for library loading.
+
     static {
-        if(!libLoadFlag) {
+        if (!libLoadFlag) {
             libLoadFlag = true;
             System.loadLibrary("nativetracker");
         }
     }
 
-    enum WindowType {
+    /**
+     * Filter window type.
+     */
+    public enum WindowType {
         Hann(0), Cheb(1), Kaiser(2);
         private int value;
+
         WindowType(int value) {
             this.value = value;
         }
-        int Value() {
+
+        public int Value() {
             return this.value;
         }
     }
 
-    static class TrackerParams {
+    /**
+     * CSRT tracker parameters.
+     */
+    public static class TrackerParams {
         // Feature related parameters.
-        boolean UseHOG = true;
-        boolean UseCN = true;
-        boolean UseGRAY = true;
-        boolean UseRGB = false;
-        int NumHOGChannelsUsed = 18;
-        boolean UsePCA = false;                     // PCA features.
-        int PCACount = 8;                           // Feature PCA count.
-        //float HogOrientations;
-        //float HogClip;
+        public boolean UseHOG = true;
+        public boolean UseCN = true;
+        public boolean UseGRAY = true;
+        public boolean UseRGB = false;
+        public int NumHOGChannelsUsed = 18;
+        public boolean UsePCA = false;                     // PCA features.
+        public int PCACount = 8;                           // Feature PCA count.
 
-        boolean UseChannelWeights = true;           // Use different weights for each channel.
-        boolean UseSegmentation = true;             // Use segmentation for spatial constraint.
+        public boolean UseChannelWeights = true;           // Use different weights for each channel.
+        public boolean UseSegmentation = true;             // Use segmentation for spatial constraint.
 
-        int AdmmIterations = 4;                     // Iteration number for optimized filter solver.
-        float Padding = 3.0f;                       // Padding used to calculate template size. Affect how much area to search.
-        int TemplateSize = 200;                     // Specify the target template size.
-        float GaussianSigma = 1.0f;                 // Guassian lable sigma factor.
+        public int AdmmIterations = 4;                     // Iteration number for optimized filter solver.
+        public float Padding = 3.0f;                       // Padding used to calculate template size. Affect how much area to search.
+        public int TemplateSize = 200;                     // Specify the target template size.
+        public float GaussianSigma = 1.0f;                 // Guassian lable sigma factor.
 
-        int WindowFunc = WindowType.Hann.Value();   // Filter window function type.
-        float ChebAttenuation = 45.0f;              // Attenuation when use Cheb window.
-        float KaiserAlpha = 3.75f;                  // Alpha value when use Kaiser window.
+        public int WindowFunc = WindowType.Hann.Value();   // Filter window function type.
+        public float ChebAttenuation = 45.0f;              // Attenuation when use Cheb window.
+        public float KaiserAlpha = 3.75f;                  // Alpha value when use Kaiser window.
 
-        float WeightsLearnRate = 0.02f;             // Filter weights learn rate.
-        float FilterLearnRate = 0.02f;              // Filter learn rate.
-        float HistLearnRate = 0.04f;                // Histogram model learn rate.
-        float ScaleLearnRate = 0.025f;              // DSST learn rate.
+        public float WeightsLearnRate = 0.02f;             // Filter weights learn rate.
+        public float FilterLearnRate = 0.02f;              // Filter learn rate.
+        public float HistLearnRate = 0.04f;                // Histogram model learn rate.
+        public float ScaleLearnRate = 0.025f;              // DSST learn rate.
 
-        float BackgroundRatio = 2.0f;               // Background extend ratio.
-        int HistogramBins = 16;                     // Bins number for the hisogram extraction.
-        int PostRegularCount = 10;                  // Iteration count for post regularization count in segment process.
-        float MaxSegmentArea = 1024.0f;             // Controls the max area used for segment probability computation.
+        public float BackgroundRatio = 2.0f;               // Background extend ratio.
+        public int HistogramBins = 16;                     // Bins number for the hisogram extraction.
+        public int PostRegularCount = 10;                  // Iteration count for post regularization count in segment process.
+        public float MaxSegmentArea = 1024.0f;             // Controls the max area used for segment probability computation.
 
-        int ScaleCount = 33;                        // Scale numbers for DSST.
-        float ScaleSigma = 0.25f;                   // DSST scale sigma factor.
-        float ScaleMaxArea = 512.0f;                // Max model area for DSST.
-        float ScaleStep = 1.02f;                    // Scale step for DSST.
+        public int ScaleCount = 33;                        // Scale numbers for DSST.
+        public float ScaleSigma = 0.25f;                   // DSST scale sigma factor.
+        public float ScaleMaxArea = 512.0f;                // Max model area for DSST.
+        public float ScaleStep = 1.02f;                    // Scale step for DSST.
 
-        int UpdateInterval = 4;                     // Update frame interval. Set to 0 or negative to disable background update mode.
-        float PeakRatio = 0.1f;                     // Specify the peak occupation ratio to calculate PSR. PeakSize = ResponseSize * PeakRatio * 2 + 1.
-        float PSRThreshold = 15.0f;                 // PSR threshold used for failure detection. 20.0 ~ 60.0 is indicates strong peaks.
+        public int UpdateInterval = 4;                     // Update frame interval. Set to 0 or negative to disable background update mode.
+        public float PeakRatio = 0.1f;                     // Specify the peak occupation ratio to calculate PSR. PeakSize = ResponseSize * PeakRatio * 2 + 1.
+        public float PSRThreshold = 15.0f;                 // PSR threshold used for failure detection. 20.0 ~ 60.0 is indicates strong peaks.
 
         // Fetch jni filed ids only once.
-        private native void InitJniFieldIDs();
-        static{
-            if(!libLoadFlag) {
+        private static native void InitJniFieldIDs();
+
+        static {
+            if (!libLoadFlag) {
                 libLoadFlag = true;
                 System.loadLibrary("nativetracker");
             }
-            new TrackerParams().InitJniFieldIDs();
+            InitJniFieldIDs();
         }
     }
 
-    static class Bounds {
-        Bounds() {
+    /**
+     * Represent a 2d rect area.
+     */
+    public static class Bounds {
+        public Bounds() {
         }
-        Bounds(int xx0, int yy0, int w, int h) {
+
+        public Bounds(int xx0, int yy0, int w, int h) {
             x0 = xx0;
             y0 = yy0;
             x1 = xx0 + w;
             y1 = yy0 + h;
         }
 
-        int x0 = 0;
-        int y0 = 0;
-        int x1 = 0;
-        int y1 = 0;
+        public int x0 = 0;
+        public int y0 = 0;
+        public int x1 = 0;
+        public int y1 = 0;
 
         // Fetch jni filed ids only once.
-        private native void InitJniFieldIDs();
-        static{
-            if(!libLoadFlag) {
+        private static native void InitJniFieldIDs();
+
+        static {
+            if (!libLoadFlag) {
                 libLoadFlag = true;
                 System.loadLibrary("nativetracker");
             }
-            new Bounds().InitJniFieldIDs();
+            InitJniFieldIDs();
         }
     }
 
-    static class TrackerResult {
-        boolean Succeed = false;
-        float Score = 0.0f;
-        Bounds Box = new Bounds();
-
-        TrackerResult() {}
+    /**
+     * Tracking result for each frame.
+     */
+    public static class TrackerResult {
+        public boolean Succeed = false;
+        public float Score = 0.0f;
+        public Bounds Box = new Bounds();
 
         // Fetch jni filed ids only once.
-        private native void InitJniFieldIDs();
-        static{
-            if(!libLoadFlag) {
+        private static native void InitJniFieldIDs();
+
+        static {
+            if (!libLoadFlag) {
                 libLoadFlag = true;
                 System.loadLibrary("nativetracker");
             }
-            new TrackerResult().InitJniFieldIDs();
+            InitJniFieldIDs();
         }
     }
 
-    CSRT(int rows, int cols) {
+
+    public CSRT(int rows, int cols) {
         this(rows, cols, new TrackerParams(), "");
     }
 
-    CSRT(int rows, int cols, TrackerParams params) {
+    public CSRT(int rows, int cols, TrackerParams params) {
         this(rows, cols, params, "");
     }
 
-    CSRT(int rows, int cols, String logPath) {
+    public CSRT(int rows, int cols, String logPath) {
         this(rows, cols, new TrackerParams(), logPath);
     }
 
-    CSRT(int rows, int cols, TrackerParams params, String logPath) {
-        if(!singleFlag)
+    public CSRT(int rows, int cols, TrackerParams params, String logPath) {
+        if (!singleFlag)
             singleFlag = true;
         else {
-            Log.e("CSRT", "Only one instance of tracker can exist.");
+            Log.e(TAG, "Only one instance of tracker can exist.");
             return;
         }
         StartSystem(logPath);
         trackerPtr = CreateTracker(rows, cols, params);
     }
 
-    void dispose() {
-        if(trackerPtr == 0) return;
+    /**
+     * Release the native resource, do native clean work.
+     */
+    public void dispose() {
+        if (trackerPtr == 0) return;
         DeleteTracker(trackerPtr);
         trackerPtr = 0;
         singleFlag = false;
         CloseSystem();
     }
-    protected void finalize() { dispose(); }
 
-    void Initialize(long dataPtr, Bounds bb) {
-        if(trackerPtr == 0) return;
+    protected void finalize() {
+        dispose();
+    }
+
+    /**
+     * Initialize the tracker with image data and target object's bounding box.
+     */
+    public void Initialize(long dataPtr, Bounds bb) {
+        if (trackerPtr == 0) {
+            Log.e(TAG, "No native tracker created.");
+            return;
+        }
         InitializeTracker(dataPtr, bb, trackerPtr);
     }
 
-    TrackerResult Update(long dataPtr) {
-        if(trackerPtr == 0) return new TrackerResult();
+    /**
+     * Update for each frame to get the current tracking result.
+     */
+    public TrackerResult Update(long dataPtr) {
+        if (trackerPtr == 0) {
+            Log.e(TAG, "No native tracker created.");
+            return new TrackerResult();
+        }
         TrackerResult res = new TrackerResult();
         UpdateTracker(dataPtr, res, trackerPtr);
         return res;
     }
 
-    void SetReinitialzie() {
-        if(trackerPtr == 0) return;
+    /**
+     * Must be called before re-initialize work.
+     */
+    public void SetReinitialzie() {
+        if (trackerPtr == 0) {
+            Log.e(TAG, "No native tracker created.");
+            return;
+        }
         ReinitialzieTracker(trackerPtr);
     }
 
-    // Hold the pointer to native tracker class.
-    private long trackerPtr = 0;
-    // Flag for singleton.
-    private static boolean singleFlag = false;
+    private long trackerPtr = 0;    // Hold the pointer to native tracker class.
+    private static boolean singleFlag = false;  // Flag for singleton.
 
-    // Native methods.
-    private native void StartSystem(String path);
-    private native void CloseSystem();
-    private native long CreateTracker(int rows, int cols, TrackerParams params);
-    private native void DeleteTracker(long trackerPtr);
-    private native void InitializeTracker(long dataPtr, Bounds bb, long trackerPtr);
-    private native void UpdateTracker(long dataPtr, TrackerResult res, long trackerPtr);
-    private native void ReinitialzieTracker(long tracker);
+    /**
+     * Native methods.
+     */
+
+    private static native void StartSystem(String path);
+
+    private static native void CloseSystem();
+
+    private static native long CreateTracker(int rows, int cols, TrackerParams params);
+
+    private static native void DeleteTracker(long trackerPtr);
+
+    private static native void InitializeTracker(long dataPtr, Bounds bb, long trackerPtr);
+
+    private static native void UpdateTracker(long dataPtr, TrackerResult res, long trackerPtr);
+
+    private static native void ReinitialzieTracker(long tracker);
 }
