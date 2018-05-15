@@ -7,6 +7,7 @@ import android.content.res.Configuration;
 import android.graphics.ImageFormat;
 import android.graphics.Matrix;
 import android.graphics.Point;
+import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.SurfaceTexture;
 import android.hardware.camera2.CameraAccessException;
@@ -53,6 +54,7 @@ public class CameraBridge {
 
     private Context mContext;
     private AutoFitTextureView mTextureView;
+    private Surface mDisplaySurface;
     private ImageReader mImageReader;
     private HandlerThread mBackgroundThread;
     private Handler mBackgroundHandler;
@@ -61,6 +63,7 @@ public class CameraBridge {
 
     private boolean mBackFacing = false;
     private int mFps = 30;
+    private boolean mSwapDimensions = false;
 
 
     private static class CompareSizesByArea implements Comparator<Size> {
@@ -104,7 +107,7 @@ public class CameraBridge {
     }
 
     public void onPause() {
-        if(mStartFlag) {
+        if (mStartFlag) {
             closeCamera();
             stopBackgroundThread();
             mStartFlag = false;
@@ -112,7 +115,11 @@ public class CameraBridge {
     }
 
     public void onDestroy() {
-
+        if (mStartFlag) {
+            closeCamera();
+            stopBackgroundThread();
+            mStartFlag = false;
+        }
     }
 
     private final TextureView.SurfaceTextureListener mSurfaceTextureListener = new TextureView.SurfaceTextureListener() {
@@ -159,11 +166,20 @@ public class CameraBridge {
         }
     };
 
-
     private final ImageReader.OnImageAvailableListener mOnImageAvailableListener = new ImageReader.OnImageAvailableListener() {
         @Override
         public void onImageAvailable(ImageReader reader) {
-            mBackgroundHandler.post(new ImageProcesser(reader.acquireNextImage()));
+            Image image = reader.acquireLatestImage();
+            if (image == null) return;
+            // RGBA output
+            Image.Plane Y_plane = image.getPlanes()[0];
+            int Y_rowStride = Y_plane.getRowStride();
+            Image.Plane U_plane = image.getPlanes()[1];
+            int UV_rowStride = U_plane.getRowStride();
+            Image.Plane V_plane = image.getPlanes()[2];
+            JNIDisplay.RGBADisplay(image.getWidth(), image.getHeight(), Y_rowStride, Y_plane.getBuffer(), UV_rowStride, U_plane.getBuffer(), V_plane.getBuffer(),
+                    mDisplaySurface, mSwapDimensions);
+            image.close();
         }
     };
 
@@ -196,7 +212,7 @@ public class CameraBridge {
 
         // Cannot find the one match the aspect ratio, ignore the requirement
         if (optimalSize == null) {
-            minDiff=Double.MAX_VALUE;
+            minDiff = Double.MAX_VALUE;
             for (Size size : allowed) {
                 tempDiff = Math.abs(size.getHeight() - targetHeight);
                 if (tempDiff < minDiff) {
@@ -210,15 +226,15 @@ public class CameraBridge {
     }
 
     private static Range<Integer> chooseOptimalFps(Range<Integer>[] choices, int target) {
-        Range<Integer> bestFramerate = new Range<Integer>(0,0);
+        Range<Integer> bestFramerate = new Range<Integer>(0, 0);
         int delta = Integer.MAX_VALUE;
         int temp = 0;
-        for(Range<Integer> option : choices) {
+        for (Range<Integer> option : choices) {
             temp = Math.abs(option.getUpper() - target);
-            if(temp < delta) {
+            if (temp < delta) {
                 bestFramerate = option;
                 delta = temp;
-            } else if(temp == delta) {
+            } else if (temp == delta) {
                 bestFramerate = bestFramerate.getLower() < option.getLower() ? option : bestFramerate;
             }
         }
@@ -245,18 +261,18 @@ public class CameraBridge {
                 int displayRotation = wm.getDefaultDisplay().getRotation();
                 //noinspection ConstantConditions
                 int mSensorOrientation = characteristics.get(CameraCharacteristics.SENSOR_ORIENTATION);
-                boolean swappedDimensions = false;
+                mSwapDimensions = false;
                 switch (displayRotation) {
                     case Surface.ROTATION_0:
                     case Surface.ROTATION_180:
                         if (mSensorOrientation == 90 || mSensorOrientation == 270) {
-                            swappedDimensions = true;
+                            mSwapDimensions = true;
                         }
                         break;
                     case Surface.ROTATION_90:
                     case Surface.ROTATION_270:
                         if (mSensorOrientation == 0 || mSensorOrientation == 180) {
-                            swappedDimensions = true;
+                            mSwapDimensions = true;
                         }
                         break;
                     default:
@@ -270,7 +286,7 @@ public class CameraBridge {
                 int maxPreviewWidth = displaySize.x;
                 int maxPreviewHeight = displaySize.y;
 
-                if (swappedDimensions) {
+                if (mSwapDimensions) {
                     rotatedPreviewWidth = height;
                     rotatedPreviewHeight = width;
                     maxPreviewWidth = displaySize.y;
@@ -284,22 +300,12 @@ public class CameraBridge {
                     maxPreviewHeight = MAX_PREVIEW_HEIGHT;
                 }
 
-                mPreviewSize = chooseOptimalSize(map.getOutputSizes(SurfaceTexture.class),
-                        rotatedPreviewWidth, rotatedPreviewHeight, maxPreviewWidth, maxPreviewHeight);
-
-                // We fit the aspect ratio of TextureView to the size of preview we picked.
-//                int orientation = mContext.getResources().getConfiguration().orientation;
-//                if (orientation == Configuration.ORIENTATION_LANDSCAPE) {
-//                    mTextureView.setAspectRatio(
-//                            mPreviewSize.getWidth(), mPreviewSize.getHeight());
-//                } else {
-//                    mTextureView.setAspectRatio(
-//                            mPreviewSize.getHeight(), mPreviewSize.getWidth());
-//                }
+                mPreviewSize = chooseOptimalSize(map.getOutputSizes(ImageReader.class),
+                        (int)(rotatedPreviewWidth*0.8), (int)(rotatedPreviewHeight*0.8), maxPreviewWidth, maxPreviewHeight);
 
                 mImageReader = ImageReader.newInstance(mPreviewSize.getWidth(),
                         mPreviewSize.getHeight(),
-                        ImageFormat.JPEG, /*maxImages*/2);
+                        ImageFormat.YUV_420_888, /*maxImages*/2);
                 mImageReader.setOnImageAvailableListener(
                         mOnImageAvailableListener, mBackgroundHandler);
 
@@ -320,17 +326,23 @@ public class CameraBridge {
             assert texture != null;
 
             // We configure the size of default buffer to be the size of camera preview we want.
-            texture.setDefaultBufferSize(mPreviewSize.getWidth(), mPreviewSize.getHeight());
+            if (mSwapDimensions) {
+                texture.setDefaultBufferSize(mPreviewSize.getHeight(), mPreviewSize.getWidth());
+            } else {
+                texture.setDefaultBufferSize(mPreviewSize.getWidth(), mPreviewSize.getHeight());
+            }
 
             // This is the output Surface we need to start preview.
-            Surface surface = new Surface(texture);
+            mDisplaySurface = new Surface(texture);
+            Surface mImageSurface = mImageReader.getSurface();
 
             // We set up a CaptureRequest.Builder with the output Surface.
             mPreviewRequestBuilder = mCameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
-            mPreviewRequestBuilder.addTarget(surface);
+            //mPreviewRequestBuilder.addTarget(surface);
+            mPreviewRequestBuilder.addTarget(mImageSurface);
 
             // Here, we create a CameraCaptureSession for camera preview.
-            mCameraDevice.createCaptureSession(Arrays.asList(surface, mImageReader.getSurface()),
+            mCameraDevice.createCaptureSession(Arrays.asList(mImageSurface),
                     new CameraCaptureSession.StateCallback() {
                         @Override
                         public void onConfigured(@NonNull CameraCaptureSession cameraCaptureSession) {
@@ -360,8 +372,7 @@ public class CameraBridge {
                         }
 
                         @Override
-                        public void onConfigureFailed(
-                                @NonNull CameraCaptureSession cameraCaptureSession) {
+                        public void onConfigureFailed(@NonNull CameraCaptureSession cameraCaptureSession) {
                             Log.e(TAG, "Capture session configuration failed.");
                         }
                     }, null

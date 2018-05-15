@@ -34,7 +34,7 @@ public class MainActivity extends AppCompatActivity {
                 lensClicked();
             }
         });
-        cameraBridge = new CameraBridge(cameraView, this, false, 30);
+        cameraBridge = new CameraBridge(cameraView, this, false, 60);
     }
 
     @Override

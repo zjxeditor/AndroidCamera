@@ -13,9 +13,14 @@ include_directories( src/main/jniLibs/include )
 
 add_library(nativetracker SHARED
 src/main/cpp/nativetracker.cpp )
+add_library(nativedisplay SHARED
+src/main/cpp/nativedisplay.cpp)
 
 include_directories(src/main/cpp)
 
 target_link_libraries(nativetracker
                        csrt
+                       ${log-lib})
+target_link_libraries(nativedisplay
+                        -landroid
                        ${log-lib})
