@@ -12,10 +12,6 @@ public class JNIDisplay {
         System.loadLibrary("nativedisplay");
     }
 
-    public static native void GrayscaleDisplay(int srcWidth, int srcHeight,
-                                               int rowStride, ByteBuffer srcBuffer,
-                                               Surface surface, boolean swapDim);
-
     public static native void RGBADisplay(int srcWidth, int srcHeight,
                                           int Y_rowStride, ByteBuffer Y_Buffer,
                                           int UV_rowStride, ByteBuffer U_Buffer,

@@ -42,8 +42,8 @@ import java.util.concurrent.TimeUnit;
 
 public class CameraBridge {
     private static final String TAG = CameraBridge.class.getSimpleName();
-    private static final int MAX_PREVIEW_WIDTH = 1920;
-    private static final int MAX_PREVIEW_HEIGHT = 1080;
+    private static final int MAX_PREVIEW_WIDTH = 1280;
+    private static final int MAX_PREVIEW_HEIGHT = 720;
 
     private String mCameraId;
     private CameraDevice mCameraDevice;
@@ -300,8 +300,17 @@ public class CameraBridge {
                     maxPreviewHeight = MAX_PREVIEW_HEIGHT;
                 }
 
-                mPreviewSize = chooseOptimalSize(map.getOutputSizes(ImageReader.class),
-                        (int)(rotatedPreviewWidth*0.8), (int)(rotatedPreviewHeight*0.8), maxPreviewWidth, maxPreviewHeight);
+                mPreviewSize = chooseOptimalSize(map.getOutputSizes(ImageFormat.YUV_420_888),
+                        rotatedPreviewWidth, rotatedPreviewHeight, maxPreviewWidth, maxPreviewHeight);
+
+                // We fit the aspect ratio of TextureView to the size of preview we picked.
+                if(mSwapDimensions) {
+                    mTextureView.setAspectRatio(
+                            mPreviewSize.getHeight(), mPreviewSize.getWidth());
+                } else {
+                    mTextureView.setAspectRatio(
+                            mPreviewSize.getWidth(), mPreviewSize.getHeight());
+                }
 
                 mImageReader = ImageReader.newInstance(mPreviewSize.getWidth(),
                         mPreviewSize.getHeight(),
@@ -331,6 +340,7 @@ public class CameraBridge {
             } else {
                 texture.setDefaultBufferSize(mPreviewSize.getWidth(), mPreviewSize.getHeight());
             }
+            //texture.setDefaultBufferSize(mPreviewSize.getWidth(), mPreviewSize.getHeight());
 
             // This is the output Surface we need to start preview.
             mDisplaySurface = new Surface(texture);
@@ -338,8 +348,8 @@ public class CameraBridge {
 
             // We set up a CaptureRequest.Builder with the output Surface.
             mPreviewRequestBuilder = mCameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
-            //mPreviewRequestBuilder.addTarget(surface);
             mPreviewRequestBuilder.addTarget(mImageSurface);
+            //mPreviewRequestBuilder.addTarget(mDisplaySurface);
 
             // Here, we create a CameraCaptureSession for camera preview.
             mCameraDevice.createCaptureSession(Arrays.asList(mImageSurface),
