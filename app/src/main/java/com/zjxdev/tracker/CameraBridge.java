@@ -3,11 +3,9 @@ package com.zjxdev.tracker;
 import android.Manifest;
 import android.content.Context;
 import android.content.pm.PackageManager;
-import android.content.res.Configuration;
 import android.graphics.ImageFormat;
 import android.graphics.Matrix;
 import android.graphics.Point;
-import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.SurfaceTexture;
 import android.hardware.camera2.CameraAccessException;
@@ -17,10 +15,12 @@ import android.hardware.camera2.CameraDevice;
 import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.params.StreamConfigurationMap;
-import android.media.Image;
-import android.media.ImageReader;
 import android.os.Handler;
 import android.os.HandlerThread;
+import android.renderscript.Allocation;
+import android.renderscript.Element;
+import android.renderscript.RenderScript;
+import android.renderscript.Type;
 import android.support.annotation.NonNull;
 import android.support.v4.content.ContextCompat;
 import android.util.Log;
@@ -30,15 +30,12 @@ import android.view.Surface;
 import android.view.TextureView;
 import android.view.WindowManager;
 
-import java.nio.ByteBuffer;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
-
 
 public class CameraBridge {
     private static final String TAG = CameraBridge.class.getSimpleName();
@@ -55,7 +52,6 @@ public class CameraBridge {
     private Context mContext;
     private AutoFitTextureView mTextureView;
     private Surface mDisplaySurface;
-    private ImageReader mImageReader;
     private HandlerThread mBackgroundThread;
     private Handler mBackgroundHandler;
     private Semaphore mCameraOpenCloseLock = new Semaphore(1);
@@ -65,6 +61,8 @@ public class CameraBridge {
     private int mFps = 30;
     private boolean mSwapDimensions = false;
 
+    private RenderScript mRS;
+    private Yuv2RgbaConversion mConversion;
 
     private static class CompareSizesByArea implements Comparator<Size> {
         @Override
@@ -74,19 +72,96 @@ public class CameraBridge {
         }
     }
 
-    private static class ImageProcesser implements Runnable {
-        private final Image mImage;
+    /**
+     * Use render script to do YUV to RGBA conversion.
+     */
+    private static class Yuv2RgbaConversion implements Allocation.OnBufferAvailableListener {
+        private Allocation mInputAllocation;
+        private Allocation mOutputAllocation;
+        private Allocation mTempInAllocation;
+        private Allocation mTempOutAllocation;
+        private ScriptC_yuv2rgba mScriptC;
 
-        ImageProcesser(Image image) {
-            mImage = image;
+        private Size mSize;
+        private byte[] mOutputBuffer;
+        private CameraBridge mFrameCallback;
+        private boolean mSwap;
+        private boolean mFlip;
+        private boolean processing = false;
+
+        Yuv2RgbaConversion(RenderScript rs, Size dimensions,
+                           CameraBridge frameCallback, boolean swap, boolean flip) {
+            mSize = dimensions;
+            mFrameCallback = frameCallback;
+            mSwap = swap;
+            mFlip = flip;
+            createAllocations(rs);
+            mInputAllocation.setOnBufferAvailableListener(this);
+
+            mScriptC = new ScriptC_yuv2rgba(rs);
+            mScriptC.set_gInputFrame(mInputAllocation);
+            mScriptC.set_gOuputFrame(mOutputAllocation);
+            mScriptC.set_gWidth(mSize.getWidth());
+            mScriptC.set_gHeight(mSize.getHeight());
+        }
+
+        private void createAllocations(RenderScript rs) {
+            mOutputBuffer = new byte[mSize.getWidth() * mSize.getHeight() * 4];
+
+            final int width = mSize.getWidth();
+            final int height = mSize.getHeight();
+
+            Type.Builder yuvTypeBuilder = new Type.Builder(rs, Element.YUV(rs));
+            yuvTypeBuilder.setX(width);
+            yuvTypeBuilder.setY(height);
+            yuvTypeBuilder.setYuvFormat(ImageFormat.YUV_420_888);
+            mInputAllocation = Allocation.createTyped(rs, yuvTypeBuilder.create(),
+                    Allocation.USAGE_IO_INPUT | Allocation.USAGE_SCRIPT);
+
+            Type rgbaType = Type.createXY(rs, Element.U8_4(rs), width, height);
+            mTempInAllocation = Allocation.createTyped(rs, rgbaType,
+                    Allocation.USAGE_SCRIPT);
+            mTempOutAllocation = Allocation.createTyped(rs, rgbaType,
+                    Allocation.USAGE_SCRIPT);
+
+            if(mSwap) {
+                Type rgbaSwapType = Type.createXY(rs, Element.U8_4(rs), height, width);
+                mOutputAllocation = Allocation.createTyped(rs, rgbaSwapType,
+                        Allocation.USAGE_SCRIPT);
+            } else {
+                mOutputAllocation = Allocation.createTyped(rs, rgbaType,
+                        Allocation.USAGE_SCRIPT);
+            }
+        }
+
+        Surface getInputSurface() {
+            return mInputAllocation.getSurface();
         }
 
         @Override
-        public void run() {
-            ByteBuffer buffer = mImage.getPlanes()[0].getBuffer();
-            byte[] bytes = new byte[buffer.remaining()];
-            buffer.get(bytes);
+        public void onBufferAvailable(Allocation a) {
+            if(processing) return;
+            processing = true;
 
+            // Get the new frame into the input allocation
+            mInputAllocation.ioReceive();
+            // Run processing pass if we should send a frame
+            if(mSwap && mFlip) {
+                mScriptC.forEach_yuv2rgba_swapflip(mTempInAllocation, mTempOutAllocation);
+            } else if(mSwap) {
+                mScriptC.forEach_yuv2rgba_swap(mTempInAllocation, mTempOutAllocation);
+            } else if(mFlip) {
+                mScriptC.forEach_yuv2rgba_flip(mTempInAllocation, mTempOutAllocation);
+            } else {
+                mScriptC.forEach_yuv2rgba(mTempInAllocation, mTempOutAllocation);
+            }
+
+            if (mFrameCallback != null) {
+                mOutputAllocation.copyTo(mOutputBuffer);
+                mFrameCallback.onFrameArray(mOutputBuffer);
+            }
+
+            processing = false;
         }
     }
 
@@ -95,9 +170,19 @@ public class CameraBridge {
         mContext = context;
         mBackFacing = useBackCamera;
         mFps = fps;
+        mRS = RenderScript.create(mContext);
+    }
+
+    /**
+     * TextureView should be recreated when recover from background.
+     */
+    public void setTextureView(AutoFitTextureView texture) {
+        mTextureView = texture;
     }
 
     public void onResume() {
+        if(mStartFlag) return;
+        mStartFlag = true;
         startBackgroundThread();
         if (mTextureView.isAvailable()) {
             openCamera(mTextureView.getWidth(), mTextureView.getHeight());
@@ -107,19 +192,17 @@ public class CameraBridge {
     }
 
     public void onPause() {
-        if (mStartFlag) {
-            closeCamera();
-            stopBackgroundThread();
-            mStartFlag = false;
-        }
+        if(!mStartFlag) return;
+        mStartFlag = false;
+        stopBackgroundThread();
+        closeCamera();
     }
 
     public void onDestroy() {
-        if (mStartFlag) {
-            closeCamera();
-            stopBackgroundThread();
-            mStartFlag = false;
-        }
+        if(!mStartFlag) return;
+        mStartFlag = false;
+        stopBackgroundThread();
+        closeCamera();
     }
 
     private final TextureView.SurfaceTextureListener mSurfaceTextureListener = new TextureView.SurfaceTextureListener() {
@@ -163,23 +246,6 @@ public class CameraBridge {
             mCameraOpenCloseLock.release();
             cameraDevice.close();
             mCameraDevice = null;
-        }
-    };
-
-    private final ImageReader.OnImageAvailableListener mOnImageAvailableListener = new ImageReader.OnImageAvailableListener() {
-        @Override
-        public void onImageAvailable(ImageReader reader) {
-            Image image = reader.acquireLatestImage();
-            if (image == null) return;
-            // RGBA output
-            Image.Plane Y_plane = image.getPlanes()[0];
-            int Y_rowStride = Y_plane.getRowStride();
-            Image.Plane U_plane = image.getPlanes()[1];
-            int UV_rowStride = U_plane.getRowStride();
-            Image.Plane V_plane = image.getPlanes()[2];
-            JNIDisplay.RGBADisplay(image.getWidth(), image.getHeight(), Y_rowStride, Y_plane.getBuffer(), UV_rowStride, U_plane.getBuffer(), V_plane.getBuffer(),
-                    mDisplaySurface, mSwapDimensions);
-            image.close();
         }
     };
 
@@ -300,7 +366,7 @@ public class CameraBridge {
                     maxPreviewHeight = MAX_PREVIEW_HEIGHT;
                 }
 
-                mPreviewSize = chooseOptimalSize(map.getOutputSizes(ImageFormat.YUV_420_888),
+                mPreviewSize = chooseOptimalSize(map.getOutputSizes(Allocation.class),
                         rotatedPreviewWidth, rotatedPreviewHeight, maxPreviewWidth, maxPreviewHeight);
 
                 // We fit the aspect ratio of TextureView to the size of preview we picked.
@@ -312,12 +378,7 @@ public class CameraBridge {
                             mPreviewSize.getWidth(), mPreviewSize.getHeight());
                 }
 
-                mImageReader = ImageReader.newInstance(mPreviewSize.getWidth(),
-                        mPreviewSize.getHeight(),
-                        ImageFormat.YUV_420_888, /*maxImages*/2);
-                mImageReader.setOnImageAvailableListener(
-                        mOnImageAvailableListener, mBackgroundHandler);
-
+                mConversion = new Yuv2RgbaConversion(mRS, mPreviewSize, this, mSwapDimensions, !mBackFacing);
                 mCameraId = cameraId;
                 return;
             }
@@ -340,19 +401,16 @@ public class CameraBridge {
             } else {
                 texture.setDefaultBufferSize(mPreviewSize.getWidth(), mPreviewSize.getHeight());
             }
-            //texture.setDefaultBufferSize(mPreviewSize.getWidth(), mPreviewSize.getHeight());
 
             // This is the output Surface we need to start preview.
             mDisplaySurface = new Surface(texture);
-            Surface mImageSurface = mImageReader.getSurface();
-
             // We set up a CaptureRequest.Builder with the output Surface.
             mPreviewRequestBuilder = mCameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
-            mPreviewRequestBuilder.addTarget(mImageSurface);
-            //mPreviewRequestBuilder.addTarget(mDisplaySurface);
+            Surface inputSurface = mConversion.getInputSurface();
+            mPreviewRequestBuilder.addTarget(inputSurface);
 
             // Here, we create a CameraCaptureSession for camera preview.
-            mCameraDevice.createCaptureSession(Arrays.asList(mImageSurface),
+            mCameraDevice.createCaptureSession(Collections.singletonList(inputSurface),
                     new CameraCaptureSession.StateCallback() {
                         @Override
                         public void onConfigured(@NonNull CameraCaptureSession cameraCaptureSession) {
@@ -426,7 +484,7 @@ public class CameraBridge {
         configureTransform(width, height);
         CameraManager manager = (CameraManager) mContext.getSystemService(Context.CAMERA_SERVICE);
         try {
-            if (!mCameraOpenCloseLock.tryAcquire(2500, TimeUnit.MILLISECONDS)) {
+            if (!mCameraOpenCloseLock.tryAcquire(4000, TimeUnit.MILLISECONDS)) {
                 throw new RuntimeException("Time out waiting to lock camera opening.");
             }
             manager.openCamera(mCameraId, mStateCallback, mBackgroundHandler);
@@ -435,7 +493,6 @@ public class CameraBridge {
         } catch (InterruptedException e) {
             throw new RuntimeException("Interrupted while trying to lock camera opening.", e);
         }
-        mStartFlag = true;
     }
 
     private void closeCamera() {
@@ -448,10 +505,6 @@ public class CameraBridge {
             if (null != mCameraDevice) {
                 mCameraDevice.close();
                 mCameraDevice = null;
-            }
-            if (null != mImageReader) {
-                mImageReader.close();
-                mImageReader = null;
             }
         } catch (InterruptedException e) {
             throw new RuntimeException("Interrupted while trying to lock camera closing.", e);
@@ -474,6 +527,17 @@ public class CameraBridge {
             mBackgroundHandler = null;
         } catch (InterruptedException e) {
             e.printStackTrace();
+        }
+    }
+
+    /**
+     * Do custom per frame process and display.
+     */
+    public void onFrameArray(byte[] frameData) {
+        if(mSwapDimensions) {
+            JNIDisplay.SimpleRGBADisplay(mPreviewSize.getHeight(), mPreviewSize.getWidth(), frameData, mDisplaySurface);
+        } else {
+            JNIDisplay.SimpleRGBADisplay(mPreviewSize.getWidth(), mPreviewSize.getHeight(), frameData, mDisplaySurface);
         }
     }
 
