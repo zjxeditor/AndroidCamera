@@ -39,6 +39,9 @@ public class MainActivity extends AppCompatActivity {
                 lensClicked();
             }
         });
+
+        CSRT tracker = new CSRT(100, 100);
+        tracker.SetDrawMode(true, 255, 0, 0, 0.5f);
     }
 
     @Override

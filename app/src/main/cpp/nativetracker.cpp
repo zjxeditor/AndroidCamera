@@ -220,22 +220,22 @@ JNIEXPORT void JNICALL Java_com_zjxdev_tracker_CSRT_DeleteTracker
 
 extern "C"
 JNIEXPORT void JNICALL Java_com_zjxdev_tracker_CSRT_InitializeTracker
-        (JNIEnv *env, jclass thizclass, jlong dataPtr, jobject bb, jlong trackerPtr) {
+        (JNIEnv *env, jclass thizclass, jlong dataPtr, jint channels, jobject bb, jlong trackerPtr) {
     unsigned char *pData = (unsigned char *) dataPtr;
     CSRT::CSRTracker *pTracker = (CSRT::CSRTracker *) trackerPtr;
     CSRT::Bounds nativebb;
     g_BoundsFieldIDs.Convert(env, bb, nativebb);
-    pTracker->Initialize(pData, nativebb);
+    pTracker->Initialize(pData, channels, nativebb);
 }
 
 extern "C"
 JNIEXPORT void JNICALL Java_com_zjxdev_tracker_CSRT_UpdateTracker
-        (JNIEnv *env, jclass thizclass, jlong dataPtr, jobject res, jlong trackerPtr) {
+        (JNIEnv *env, jclass thizclass, jlong dataPtr, jint channels, jobject res, jlong trackerPtr) {
     unsigned char *pData = (unsigned char *) dataPtr;
     CSRT::CSRTracker *pTracker = (CSRT::CSRTracker *) trackerPtr;
     CSRT::Bounds nativebb;
     float score = 0.0f;
-    bool succeed = pTracker->Update(pData, nativebb, score);
+    bool succeed = pTracker->Update(pData, channels, nativebb, score);
     g_TrackerResultFieldIDs.SetValues(env, res, succeed, score, nativebb);
 }
 
@@ -244,4 +244,11 @@ JNIEXPORT void JNICALL Java_com_zjxdev_tracker_CSRT_ReinitialzieTracker
         (JNIEnv *env, jclass thizclass, jlong trackerPtr) {
     CSRT::CSRTracker *pTracker = (CSRT::CSRTracker *) trackerPtr;
     pTracker->SetReinitialize();
+}
+
+extern "C"
+JNIEXPORT void JNICALL Java_com_zjxdev_tracker_CSRT_SetTrackerDrawMode
+        (JNIEnv *env, jclass thizclass, jboolean enableDraw, jint red, jint green, jint blue, jfloat alpha, jlong trackerPtr) {
+    CSRT::CSRTracker *pTracker = (CSRT::CSRTracker *) trackerPtr;
+    pTracker->SetDrawMode((bool)enableDraw, (unsigned char)red, (unsigned char)(green), (unsigned char)(blue), alpha);
 }

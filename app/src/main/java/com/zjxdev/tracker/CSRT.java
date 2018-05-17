@@ -181,24 +181,24 @@ public class CSRT {
     /**
      * Initialize the tracker with image data and target object's bounding box.
      */
-    public void Initialize(long dataPtr, Bounds bb) {
+    public void Initialize(long dataPtr, int channels, Bounds bb) {
         if (trackerPtr == 0) {
             Log.e(TAG, "No native tracker created.");
             return;
         }
-        InitializeTracker(dataPtr, bb, trackerPtr);
+        InitializeTracker(dataPtr, channels, bb, trackerPtr);
     }
 
     /**
      * Update for each frame to get the current tracking result.
      */
-    public TrackerResult Update(long dataPtr) {
+    public TrackerResult Update(long dataPtr, int channels) {
         if (trackerPtr == 0) {
             Log.e(TAG, "No native tracker created.");
             return new TrackerResult();
         }
         TrackerResult res = new TrackerResult();
-        UpdateTracker(dataPtr, res, trackerPtr);
+        UpdateTracker(dataPtr, channels, res, trackerPtr);
         return res;
     }
 
@@ -211,6 +211,14 @@ public class CSRT {
             return;
         }
         ReinitialzieTracker(trackerPtr);
+    }
+
+    public void SetDrawMode(boolean enableDraw, int red, int green, int blue, float alpha) {
+        if(trackerPtr == 0) {
+            Log.e(TAG, "No native tracker created.");
+            return;
+        }
+        SetTrackerDrawMode(enableDraw, red, green, blue, alpha, trackerPtr);
     }
 
     private long trackerPtr = 0;    // Hold the pointer to native tracker class.
@@ -228,9 +236,11 @@ public class CSRT {
 
     private static native void DeleteTracker(long trackerPtr);
 
-    private static native void InitializeTracker(long dataPtr, Bounds bb, long trackerPtr);
+    private static native void InitializeTracker(long dataPtr, int channels, Bounds bb, long trackerPtr);
 
-    private static native void UpdateTracker(long dataPtr, TrackerResult res, long trackerPtr);
+    private static native void UpdateTracker(long dataPtr, int channels, TrackerResult res, long trackerPtr);
 
     private static native void ReinitialzieTracker(long tracker);
+
+    private static native void SetTrackerDrawMode(boolean enableDraw, int r, int g, int b, float a, long trackerPtr);
 }
