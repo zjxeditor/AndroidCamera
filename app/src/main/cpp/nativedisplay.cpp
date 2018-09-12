@@ -5,7 +5,6 @@
 #include <android/native_window_jni.h>
 
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, "Tracker", __VA_ARGS__)
-#define LOGI(...) __android_log_print(ANDROID_LOG_INFO, "Tracker", __VA_ARGS__)
 
 extern "C" JNIEXPORT void JNICALL Java_com_zjxdev_tracker_JNIDisplay_SimpleRGBADisplay(
         JNIEnv *env,

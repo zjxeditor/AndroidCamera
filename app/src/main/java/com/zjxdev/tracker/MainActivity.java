@@ -1,11 +1,8 @@
 package com.zjxdev.tracker;
 
 import android.Manifest;
-import android.app.Activity;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
-import android.support.annotation.NonNull;
-import android.support.annotation.WorkerThread;
 import android.support.design.widget.FloatingActionButton;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.ContextCompat;
@@ -15,9 +12,7 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
-import android.widget.TextView;
 
-import java.io.File;
 
 public class MainActivity extends AppCompatActivity {
     private static final String TAG = MainActivity.class.getSimpleName();
@@ -25,30 +20,17 @@ public class MainActivity extends AppCompatActivity {
     private FrameLayout frameView;
     private AutoFitTextureView cameraView;
     private CameraBridge cameraBridge;
-    private boolean started = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         frameView = findViewById(R.id.frameView);
-        FloatingActionButton lensButton = findViewById(R.id.lensButton);
-        lensButton.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                lensClicked();
-            }
-        });
-
-        CSRT tracker = new CSRT(100, 100);
-        tracker.SetDrawMode(true, 255, 0, 0, 0.5f);
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        if(started) return;
-        started = true;
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.CAMERA}, REQUEST_CAMERA_PERMISSION);
         } else {
@@ -64,15 +46,15 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     protected void onPause() {
-        cameraBridge.onPause();
-        started = false;
+        if(cameraBridge != null)
+            cameraBridge.onPause();
         super.onPause();
     }
 
     @Override
     protected void onDestroy() {
-        cameraBridge.onDestroy();
-        started = false;
+        if(cameraBridge != null)
+            cameraBridge.onDestroy();
         super.onDestroy();
     }
 
@@ -81,13 +63,7 @@ public class MainActivity extends AppCompatActivity {
         switch (requestCode) {
             case REQUEST_CAMERA_PERMISSION: {
                 if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                    recreateCameraView();
-                    if(cameraBridge == null) {
-                        cameraBridge = new CameraBridge(cameraView, this, false, 60);
-                    } else {
-                        cameraBridge.setTextureView(cameraView);
-                    }
-                    cameraBridge.onResume();
+                    Log.e(TAG, "Camera permission granted.");
                 } else {
                     Log.e(TAG, "Camera permission denied.");
                 }
@@ -102,9 +78,5 @@ public class MainActivity extends AppCompatActivity {
         cameraView.setLayoutParams(new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER));
         frameView.addView(cameraView, 0);
-    }
-
-    private void lensClicked() {
-
     }
 }
